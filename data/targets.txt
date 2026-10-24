@@ -1,0 +1,8 @@
+# Sites to probe. Add your own; keep it to public, lawful sites.
+example.com
+wikipedia.org
+github.com
+bbc.com
+reuters.com
+thehindu.com
+pib.gov.in

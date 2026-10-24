@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>shutdown-watch — Internet Shutdown Detector &amp; Mesh Simulator</title>
+  <meta name="description" content="Detect network blocking layer by layer and simulate offline messaging during internet shutdowns. A Computer Networks course project studying India's internet shutdowns." />
+
+  <!-- Fonts: Caveat (display) + Patrick Hand (reading) as open handwritten pair -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&amp;family=Patrick+Hand&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap" rel="stylesheet" />
+
+  <style>
+/* ===================================================
+   DESIGN TOKENS  (sketch / working-sheet system)
+=================================================== */
+:root {
+  --ground:       #f7f2e7;
+  --scrap:        #fcf8ef;
+  --ink:          #38352f;
+  --ink-muted:    #514d44;
+  --line:         #b3ac9d;
+  --accent:       #9e3a2e;
+  --note:         #344c69;
+  --hi:           #f0dfa0;
+  --stroke:       1.5px;
+  --r:            9px 4px 17px 5px / 4px 12px 5px 9px;
+  --r-sm:         6px 2px 10px 3px / 2px 8px 3px 6px;
+  --motion:       100ms;
+  --gap:          20px;
+  --font-display: "Caveat", cursive;
+  --font-read:    "Patrick Hand", cursive;
+  --font-mono:    "JetBrains Mono", monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-read);
+  font-size: 19px;
+  line-height: 1.65;
+  background: var(--ground);
+  color: var(--ink);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+h1,h2,h3,h4 { font-family: var(--font-display); line-height: 1.15; }
+h1 { font-size: clamp(2.4rem, 7vw, 4.2rem); }
+h2 { font-size: clamp(1.8rem, 4vw, 2.8rem); }
+h3 { font-size: 1.4rem; }
+h4 { font-size: 1.15rem; }
+
+p { color: var(--ink-muted); max-width: 68ch; }
+
+a { color: var(--note); text-underline-offset: 3px; }
+a:hover { color: var(--accent); }
+
+:focus-visible {
+  outline: 2px dashed var(--note);
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+section { padding: 72px 0; }
+
+/* ruled lines behind hero paper */
+.ruled {
+  background-image: repeating-linear-gradient(
+    transparent, transparent 31px,
+    rgba(180,170,158,0.35) 31px, rgba(180,170,158,0.35) 32px
+  );
+}
+
+/* ── NAV ───────────────────────────────────────────── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--scrap);
+  border-bottom: var(--stroke) solid var(--line);
+  box-shadow: 0 2px 0 rgba(180,170,150,0.4);
+}
+.nav-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 12px 24px; max-width: 1160px; margin: 0 auto;
+  flex-wrap: wrap;
+}
+.nav-logo {
+  font-family: var(--font-display); font-size: 1.5rem; font-weight: 700;
+  color: var(--ink); text-decoration: none;
+  display: flex; align-items: center; gap: 8px;
+}
+.logo-icon {
+  background: var(--hi); padding: 2px 6px;
+  border: var(--stroke) solid var(--line);
+  border-radius: 3px 1px 5px 2px / 2px 4px 2px 3px;
+  transform: rotate(-2deg); display: inline-block;
+}
+.nav-links { display: flex; gap: 4px; }
+.nav-link {
+  font-family: var(--font-read); font-size: 0.95rem;
+  color: var(--ink-muted); text-decoration: none;
+  padding: 4px 10px; border-radius: var(--r-sm);
+  transition: background var(--motion), color var(--motion);
+}
+.nav-link:hover { background: var(--hi); color: var(--ink); }
+.nav-cta {
+  font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+  color: white; background: var(--accent);
+  border: var(--stroke) solid var(--ink);
+  border-radius: var(--r-sm);
+  padding: 6px 14px; text-decoration: none;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: box-shadow var(--motion), transform var(--motion);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.nav-cta:hover { box-shadow: 1px 1px 0 var(--ink); transform: translate(2px,2px); color: white; }
+.nav-cta:active { box-shadow: 0 0 0 var(--ink); transform: translate(3px,3px); }
+
+/* ── HERO ──────────────────────────────────────────── */
+.hero {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 64px 24px 56px; min-height: 88vh; justify-content: center;
+}
+.hero-paper {
+  background: var(--scrap);
+  border: var(--stroke) solid var(--line);
+  border-radius: 4px 2px 6px 3px / 2px 5px 3px 4px;
+  border-left: 3px solid rgba(180,100,80,0.35);
+  padding: 48px 32px 40px;
+  position: relative; width: 100%; max-width: 860px;
+  text-align: center;
+}
+.hero-paper::before {
+  content: '';
+  position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+  width: 80px; height: 20px;
+  background: rgba(240,223,160,0.7);
+  border: 1px solid rgba(180,160,80,0.4);
+  border-radius: 2px;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--hi); border: var(--stroke) solid var(--note);
+  border-radius: 2px 5px 2px 4px / 4px 2px 5px 2px;
+  padding: 3px 10px;
+  font-size: 0.85rem; color: var(--note); font-weight: 700;
+  letter-spacing: 0.04em; margin-bottom: 24px;
+}
+.badge-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.6); }
+}
+.hero h1 { color: var(--ink); margin-bottom: 18px; }
+.underline-squiggle {
+  text-decoration: underline; text-decoration-style: wavy;
+  text-decoration-color: var(--accent); text-underline-offset: 6px;
+}
+.hi-mark { background: var(--hi); padding: 0 4px; border-radius: 2px; }
+.hero-sub {
+  font-size: 1.05rem; color: var(--ink-muted);
+  max-width: 600px; margin: 0 auto 36px; line-height: 1.7;
+}
+.hero-ctas {
+  display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+}
+.arrow-note {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--font-display); font-size: 1rem;
+  color: var(--accent); margin-top: 28px; opacity: 0.7;
+}
+.stats-strip {
+  display: flex; gap: 40px; margin-top: 48px;
+  flex-wrap: wrap; justify-content: center;
+  border-top: var(--stroke) solid var(--line);
+  padding-top: 28px;
+}
+.stat { text-align: center; }
+.stat-val {
+  font-family: var(--font-display); font-size: 2.2rem; font-weight: 700;
+  color: var(--accent);
+}
+.stat-lbl {
+  font-size: 0.82rem; color: var(--note); margin-top: 2px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+
+/* ── BUTTONS ───────────────────────────────────────── */
+.btn {
+  font-family: var(--font-display); font-size: 1.1rem;
+  padding: 10px 24px;
+  border: var(--stroke) solid var(--ink); border-radius: var(--r);
+  cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 7px;
+  transition: transform var(--motion), box-shadow var(--motion);
+  background: var(--scrap); color: var(--ink);
+  box-shadow: 3px 3px 0 var(--line);
+}
+.btn:hover { transform: rotate(-0.8deg) translate(-1px,-1px); box-shadow: 5px 5px 0 var(--line); color: var(--ink); }
+.btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--line); }
+.btn-primary {
+  background: var(--accent); color: white; border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+.btn-primary:hover { box-shadow: 5px 5px 0 var(--ink); color: white; }
+.btn-secondary {
+  background: var(--scrap); color: var(--note);
+  border-color: var(--note); box-shadow: 3px 3px 0 var(--note);
+}
+.btn-secondary:hover { box-shadow: 5px 5px 0 var(--note); }
+
+/* ── SECTION LABELS ────────────────────────────────── */
+.section-label {
+  font-family: var(--font-display); font-size: 0.95rem; font-weight: 700;
+  color: var(--note); letter-spacing: 0.09em; text-transform: uppercase;
+  margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+}
+.section-label::before { content: 'right arrow'; font-size: 0; }
+.section-label::after { content: ''; display: block; width: 24px; height: 1.5px; background: var(--note); }
+.section-title { color: var(--ink); margin-bottom: 14px; }
+.section-sub { color: var(--ink-muted); font-size: 1rem; margin-bottom: 0; max-width: 56ch; }
+.note-callout {
+  border-left: 3px solid var(--note);
+  background: rgba(52,76,105,0.06);
+  padding: 10px 16px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: 0.9rem; color: var(--note); margin-top: 16px;
+}
+
+/* ── LAYER CARDS ───────────────────────────────────── */
+.layers-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+  gap: var(--gap); margin-top: 40px;
+}
+.layer-card {
+  background: var(--scrap); border: var(--stroke) solid var(--line);
+  border-radius: var(--r); padding: 24px 20px;
+  transition: transform var(--motion), box-shadow var(--motion);
+}
+.layer-card:hover { transform: rotate(-0.5deg) translateY(-3px); box-shadow: 4px 6px 0 var(--line); }
+.layer-num {
+  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+  color: var(--note); letter-spacing: 0.08em; margin-bottom: 10px;
+  background: var(--hi); display: inline-block;
+  padding: 1px 8px; border-radius: 20px; border: 1px solid var(--note);
+}
+.layer-icon { font-size: 1.8rem; margin-bottom: 10px; display: block; }
+.layer-name { font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.layer-desc { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.6; }
+.layer-verdict {
+  display: inline-block; margin-top: 14px;
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600;
+  color: var(--note); background: var(--hi);
+  border: 1px solid var(--note); border-radius: 3px; padding: 2px 8px;
+}
+
+/* ── PROBE SIMULATOR ───────────────────────────────── */
+.probe-demo {
+  margin-top: 48px; background: var(--scrap);
+  border: var(--stroke) solid var(--line); border-radius: var(--r);
+  padding: 28px 24px; position: relative;
+}
+.probe-demo::before {
+  content: 'SIMULATOR';
+  position: absolute; top: -14px; left: 24px;
+  background: var(--hi); border: 1px solid var(--line);
+  padding: 1px 8px; border-radius: 2px;
+  font-family: var(--font-mono); font-size: 0.65rem;
+  color: var(--note); letter-spacing: 0.1em; transform: rotate(-1deg);
+}
+.probe-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 24px;
+}
+.probe-title { font-family: var(--font-display); font-size: 1.3rem; color: var(--ink); }
+.probe-sub { font-size: 0.85rem; color: var(--note); margin-top: 2px; }
+.probe-controls { display: flex; gap: 10px; flex-wrap: wrap; }
+.target-select {
+  font-family: var(--font-read); font-size: 0.9rem;
+  padding: 7px 12px;
+  border: var(--stroke) solid var(--line); border-radius: var(--r-sm);
+  background: var(--ground); color: var(--ink);
+  cursor: pointer; outline: none;
+}
+.target-select:focus { border-color: var(--note); }
+.run-btn {
+  font-family: var(--font-display); font-size: 1rem;
+  padding: 7px 18px; background: var(--accent); color: white;
+  border: var(--stroke) solid var(--ink); border-radius: var(--r-sm);
+  box-shadow: 2px 2px 0 var(--ink); cursor: pointer;
+  transition: transform var(--motion), box-shadow var(--motion);
+  display: flex; align-items: center; gap: 6px;
+}
+.run-btn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--ink); }
+.run-btn:active { transform: translate(2px,2px); box-shadow: 0 0 0 var(--ink); }
+.run-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.probe-pipeline { display: flex; flex-direction: column; gap: 4px; }
+.probe-step {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px;
+  border: var(--stroke) solid transparent; border-radius: var(--r-sm);
+  background: var(--ground);
+  transition: background var(--motion), border-color var(--motion);
+}
+.probe-step.active  { border-color: var(--note); background: rgba(52,76,105,0.08); }
+.probe-step.done-ok   { border-color: #5a8a5a; background: rgba(90,138,90,0.07); }
+.probe-step.done-fail { border-color: var(--accent); background: rgba(158,58,46,0.07); }
+.step-indicator {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 0.9rem; font-weight: 700;
+  background: var(--line); color: var(--scrap);
+  transition: background var(--motion), color var(--motion);
+}
+.probe-step.active .step-indicator    { background: var(--note); color: white; }
+.probe-step.done-ok .step-indicator   { background: #5a8a5a; color: white; }
+.probe-step.done-fail .step-indicator { background: var(--accent); color: white; }
+.step-label { font-family: var(--font-display); font-size: 1rem; font-weight: 700; min-width: 50px; color: var(--ink); }
+.step-detail { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-muted); flex: 1; }
+.step-ms { font-family: var(--font-mono); font-size: 0.75rem; color: var(--note); margin-left: auto; flex-shrink: 0; }
+.verdict-box {
+  margin-top: 18px; padding: 14px 18px; border-radius: var(--r-sm);
+  font-family: var(--font-display); font-size: 1.1rem; font-weight: 700;
+  display: flex; align-items: center; gap: 10px;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.verdict-box.show { opacity: 1; transform: translateY(0); }
+.verdict-box.ok   { background: rgba(90,138,90,0.12); border: var(--stroke) solid #5a8a5a; color: #3d6b3d; }
+.verdict-box.warn { background: rgba(240,191,80,0.18); border: var(--stroke) solid #c9a020; color: #7a5f00; }
+.verdict-box.fail { background: rgba(158,58,46,0.1);  border: var(--stroke) solid var(--accent); color: var(--accent); }
+
+/* ── VERDICTS GRID ─────────────────────────────────── */
+.verdicts-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr));
+  gap: 14px; margin-top: 40px;
+}
+.verdict-card {
+  background: var(--scrap); border: var(--stroke) solid var(--line); border-radius: var(--r);
+  padding: 20px 22px; display: flex; gap: 14px; align-items: flex-start;
+  transition: transform var(--motion), box-shadow var(--motion);
+}
+.verdict-card:hover { transform: rotate(0.4deg) translateY(-2px); box-shadow: 3px 4px 0 var(--line); }
+.verdict-tag {
+  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+  padding: 3px 8px; border-radius: 3px; flex-shrink: 0; margin-top: 2px; border: 1px solid;
+}
+.v-ok     { background: rgba(90,138,90,0.12); color: #3d6b3d; border-color: #5a8a5a; }
+.v-dns    { background: rgba(52,76,105,0.12); color: var(--note); border-color: var(--note); }
+.v-tcp    { background: rgba(52,76,105,0.07); color: var(--note); border-color: var(--note); }
+.v-tls    { background: rgba(90,100,158,0.1); color: #3a3d8a; border-color: #5a5db0; }
+.v-http   { background: rgba(200,140,30,0.12); color: #7a5500; border-color: #c9a020; }
+.v-outage { background: rgba(158,58,46,0.12); color: var(--accent); border-color: var(--accent); }
+.verdict-info h4 { font-family: var(--font-display); font-size: 1.05rem; color: var(--ink); margin-bottom: 4px; }
+.verdict-info p  { font-size: 0.87rem; color: var(--ink-muted); line-height: 1.55; max-width: 100%; }
+
+/* ── MESH SIMULATOR ────────────────────────────────── */
+.mesh-layout {
+  display: grid; grid-template-columns: 1fr 320px;
+  gap: 24px; margin-top: 40px; align-items: start;
+}
+@media (max-width:900px) { .mesh-layout { grid-template-columns: 1fr; } }
+.mesh-canvas-wrap {
+  background: #f0ece0; border: var(--stroke) solid var(--line);
+  border-radius: var(--r); overflow: hidden; aspect-ratio: 1; position: relative;
+}
+.mesh-canvas-wrap::after {
+  content: 'LIVE';
+  position: absolute; top: 10px; right: 12px;
+  background: var(--accent); color: white;
+  font-family: var(--font-mono); font-size: 0.6rem; font-weight: 600;
+  padding: 1px 6px; letter-spacing: 0.1em; border-radius: 2px; opacity: 0.85;
+}
+#meshCanvas { width: 100%; height: 100%; display: block; }
+.mesh-panel { display: flex; flex-direction: column; gap: 16px; }
+.mesh-controls {
+  background: var(--scrap); border: var(--stroke) solid var(--line);
+  border-radius: var(--r); padding: 22px 20px;
+}
+.mesh-controls h3 {
+  font-family: var(--font-display); font-size: 1.1rem; color: var(--note);
+  margin-bottom: 16px; border-bottom: var(--stroke) solid var(--line); padding-bottom: 8px;
+}
+.ctrl-row { margin-bottom: 16px; }
+.ctrl-label { display: flex; justify-content: space-between; font-size: 0.88rem; color: var(--ink-muted); margin-bottom: 6px; }
+.ctrl-val { font-family: var(--font-mono); color: var(--accent); font-weight: 700; }
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 4px;
+  background: var(--line); border-radius: 4px; outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px;
+  background: var(--accent); border-radius: 50%; border: 2px solid var(--ink); cursor: pointer;
+}
+.mode-btns { display: flex; gap: 8px; margin-top: 8px; }
+.mode-btn {
+  flex: 1; padding: 7px 10px;
+  font-family: var(--font-display); font-size: 1rem;
+  background: var(--ground); color: var(--ink-muted);
+  border: var(--stroke) solid var(--line); border-radius: var(--r-sm); cursor: pointer;
+  transition: background var(--motion), color var(--motion), border-color var(--motion);
+}
+.mode-btn.active { background: var(--hi); color: var(--note); border-color: var(--note); }
+.sim-btn {
+  width: 100%; padding: 12px;
+  font-family: var(--font-display); font-size: 1.1rem; font-weight: 700;
+  background: var(--accent); color: white;
+  border: var(--stroke) solid var(--ink); border-radius: var(--r);
+  box-shadow: 3px 3px 0 var(--ink); cursor: pointer; margin-top: 6px;
+  transition: transform var(--motion), box-shadow var(--motion);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.sim-btn:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--ink); }
+.sim-btn:active { transform: translate(2px,2px); box-shadow: 0 0 0 var(--ink); }
+.mesh-stats { background: var(--scrap); border: var(--stroke) solid var(--line); border-radius: var(--r); padding: 20px; }
+.mesh-stats h3 { font-family: var(--font-display); font-size: 1.1rem; color: var(--note); margin-bottom: 14px; border-bottom: var(--stroke) solid var(--line); padding-bottom: 8px; }
+.stat-rows { display: flex; flex-direction: column; gap: 10px; }
+.stat-row { display: flex; justify-content: space-between; align-items: center; }
+.stat-row-lbl { font-size: 0.88rem; color: var(--ink-muted); }
+.stat-row-val { font-family: var(--font-mono); font-size: 0.88rem; font-weight: 600; color: var(--ink); }
+.progress-bar-wrap { margin-top: 6px; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.6s ease; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--ink-muted); }
+.legend-dot { width: 9px; height: 9px; border-radius: 50%; }
+
+/* ── FEATURES ──────────────────────────────────────── */
+.features-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr));
+  gap: var(--gap); margin-top: 40px;
+}
+.feature-card {
+  background: var(--scrap); border: var(--stroke) solid var(--line);
+  border-radius: var(--r); padding: 28px 24px;
+  transition: transform var(--motion), box-shadow var(--motion);
+}
+.feature-card:hover { transform: rotate(-0.6deg) translateY(-3px); box-shadow: 4px 5px 0 var(--line); }
+.feature-icon {
+  font-size: 1.8rem; margin-bottom: 14px;
+  width: 48px; height: 48px; background: var(--hi);
+  border: var(--stroke) solid var(--line);
+  border-radius: 4px 2px 6px 2px / 2px 5px 2px 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+.feature-card h3 { font-family: var(--font-display); font-size: 1.2rem; color: var(--ink); margin-bottom: 8px; }
+.feature-card p  { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.6; max-width: 100%; }
+
+/* ── USAGE / CODE ──────────────────────────────────── */
+.usage-layout { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); margin-top: 40px; }
+@media (max-width:700px) { .usage-layout { grid-template-columns: 1fr; } }
+.usage-card {
+  background: var(--scrap); border: var(--stroke) solid var(--line);
+  border-radius: var(--r); padding: 24px;
+}
+.usage-card h3 {
+  font-family: var(--font-display); font-size: 1.2rem; color: var(--ink);
+  margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+}
+.usage-num {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--note); color: white; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 0.95rem; font-weight: 700;
+}
+.code-block {
+  background: var(--ground); border: var(--stroke) solid var(--line);
+  border-radius: 4px; padding: 16px 18px;
+  font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.9; overflow-x: auto;
+}
+.code-block .comment { color: var(--line); }
+.code-block .cmd     { color: var(--note); }
+.code-block .flag    { color: var(--accent); }
+.code-block .val     { color: #4a7c59; }
+
+/* ── CLOSING ───────────────────────────────────────── */
+.closing { text-align: center; padding: 56px 24px; border-top: var(--stroke) solid var(--line); }
+.closing-text { font-family: var(--font-display); font-size: clamp(1.6rem,4vw,2.6rem); color: var(--accent); max-width: 680px; margin: 0 auto 16px; }
+.closing-sub { font-size: 0.95rem; color: var(--ink-muted); max-width: 100%; }
+
+/* ── FOOTER ────────────────────────────────────────── */
+footer { border-top: var(--stroke) solid var(--line); background: var(--scrap); padding: 36px 24px; }
+.footer-inner {
+  max-width: 1160px; margin: 0 auto; display: flex;
+  justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 24px;
+}
+.footer-left h4 { font-family: var(--font-display); font-size: 1.2rem; color: var(--ink); margin-bottom: 4px; }
+.footer-left p { font-size: 0.85rem; color: var(--ink-muted); max-width: 100%; }
+.footer-links { display: flex; gap: 18px; flex-wrap: wrap; }
+.footer-link { font-size: 0.9rem; color: var(--ink-muted); text-decoration: none; transition: color var(--motion); }
+.footer-link:hover { color: var(--accent); }
+
+/* ── DIVIDER ───────────────────────────────────────── */
+.rule { border: none; border-top: var(--stroke) solid var(--line); margin: 0; }
+
+/* ── RESPONSIVE ────────────────────────────────────── */
+@media (max-width:680px) {
+  .nav-links { display: none; }
+  .stats-strip { gap: 20px; }
+  .probe-demo { padding: 18px; }
+  .hero-paper { padding: 32px 18px 28px; }
+}
+@media (min-width:1050px) { .features-grid { grid-template-columns: repeat(3,1fr); } }
+
+/* ── ANIMATIONS ────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity:0; transform: translateY(18px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+.animate-up { animation: fadeUp 0.55s ease both; }
+.delay-1 { animation-delay: 0.1s; }
+.delay-2 { animation-delay: 0.22s; }
+.delay-3 { animation-delay: 0.36s; }
+.delay-4 { animation-delay: 0.52s; }
+
+/* ── REDUCED MOTION ────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  .badge-dot { animation: none; }
+}
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <span class="logo-icon" aria-hidden="true">&#x1F4E1;</span>
+      shutdown-watch
+    </a>
+    <div class="nav-links" role="navigation" aria-label="Page sections">
+      <a href="#how-it-works" class="nav-link">How it works</a>
+      <a href="#simulator" class="nav-link">Simulator</a>
+      <a href="#mesh" class="nav-link">Mesh</a>
+      <a href="#usage" class="nav-link">Usage</a>
+    </div>
+    <a href="https://github.com/ShivamRaghuvanshi2006/shutdown-watch" target="_blank" rel="noopener" class="nav-cta">
+      GitHub &#x2197;
+    </a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-paper ruled animate-up">
+    <div class="hero-badge animate-up delay-1">
+      <span class="badge-dot" aria-hidden="true"></span>
+      Computer Networks Course Project
+    </div>
+    <h1 class="animate-up delay-1">
+      Detect Internet<br>
+      <span class="underline-squiggle">Shutdowns</span> &amp; Build<br>
+      <span class="hi-mark">Resilient Mesh</span>
+    </h1>
+    <p class="hero-sub animate-up delay-2">
+      Layer-by-layer network probing to pinpoint exactly where your internet is being
+      blocked &#x2014; DNS tampering, TCP injection, TLS interference, or HTTP censorship &#x2014;
+      plus a delay-tolerant mesh simulator for when the network goes dark entirely.
+    </p>
+    <div class="hero-ctas animate-up delay-3">
+      <a href="#simulator" class="btn btn-primary">&#x25B6; Try the Simulator</a>
+      <a href="https://github.com/ShivamRaghuvanshi2006/shutdown-watch" target="_blank" rel="noopener" class="btn btn-secondary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        Clone on GitHub
+      </a>
+    </div>
+    <div class="arrow-note animate-up delay-4" aria-hidden="true">
+      <svg width="36" height="24" viewBox="0 0 36 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M2 18 Q10 4 28 12" stroke-linecap="round"/>
+        <path d="M24 8 L28 12 L23 15" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      works in your browser &#x2014; no install needed
+    </div>
+    <div class="stats-strip animate-up delay-4">
+      <div class="stat"><div class="stat-val">#1</div><div class="stat-lbl">Internet Shutdowns &#x2014; India</div></div>
+      <div class="stat"><div class="stat-val">4</div><div class="stat-lbl">Network layers probed</div></div>
+      <div class="stat"><div class="stat-val">100%</div><div class="stat-lbl">Epidemic delivery ratio</div></div>
+      <div class="stat"><div class="stat-val">0</div><div class="stat-lbl">Dependencies &#x2014; stdlib only</div></div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- HOW IT WORKS -->
+<section id="how-it-works">
+  <div class="wrap">
+    <div class="section-label">Architecture</div>
+    <h2 class="section-title">Layer-by-Layer Detection</h2>
+    <p class="section-sub">
+      Each site is probed through the full network stack. A failure is pinpointed to the exact
+      layer where the connection breaks &#x2014; giving you a precise verdict, not just &#x201C;it&#x2019;s not working.&#x201D;
+    </p>
+    <p class="note-callout">
+      The tool compares your ISP&#x2019;s resolver against Google&#x2019;s 8.8.8.8 for DNS, then walks up through
+      TCP &#x2192; TLS &#x2192; HTTP, stopping as soon as it finds the block.
+    </p>
+    <div class="layers-grid">
+      <div class="layer-card">
+        <div class="layer-num">LAYER 01</div>
+        <span class="layer-icon">&#x1F310;</span>
+        <div class="layer-name">DNS Resolution</div>
+        <p class="layer-desc">Compares the OS resolver&#x2019;s response against Google&#x2019;s 8.8.8.8 using a hand-rolled UDP DNS client (RFC 1035). Private IPs returned for public names = tampering.</p>
+        <span class="layer-verdict">dns_tampering</span>
+      </div>
+      <div class="layer-card">
+        <div class="layer-num">LAYER 02</div>
+        <span class="layer-icon">&#x1F517;</span>
+        <div class="layer-name">TCP Handshake</div>
+        <p class="layer-desc">Attempts a 3-way TCP handshake to port 443. A timeout or RST injection here means the connection is being actively blocked by a firewall or DPI box.</p>
+        <span class="layer-verdict">tcp_blocked</span>
+      </div>
+      <div class="layer-card">
+        <div class="layer-num">LAYER 03</div>
+        <span class="layer-icon">&#x1F512;</span>
+        <div class="layer-name">TLS &amp; SNI</div>
+        <p class="layer-desc">Performs a full TLS handshake with the real hostname as the SNI field. A mid-handshake reset reveals SNI-based filtering (common in government censorship).</p>
+        <span class="layer-verdict">tls_interference</span>
+      </div>
+      <div class="layer-card">
+        <div class="layer-num">LAYER 04</div>
+        <span class="layer-icon">&#x1F4C4;</span>
+        <div class="layer-name">HTTP Request</div>
+        <p class="layer-desc">Sends a HEAD / over the open TLS socket. HTTP 451 (Unavailable for Legal Reasons) is the clearest signal of government-mandated blocking.</p>
+        <span class="layer-verdict">http_blocked</span>
+      </div>
+    </div>
+
+    <!-- Probe Simulator -->
+    <div class="probe-demo" id="simulator">
+      <div class="probe-header">
+        <div>
+          <div class="probe-title">&#x1F52C; Interactive Probe Simulator</div>
+          <div class="probe-sub">Simulate what shutdown-watch detects for each site</div>
+        </div>
+        <div class="probe-controls">
+          <select class="target-select" id="targetSelect" aria-label="Choose a scenario to simulate">
+            <option value="ok">wikipedia.org &#x2014; All OK</option>
+            <option value="dns_tamper">blocked-news.example &#x2014; DNS Tampering</option>
+            <option value="tcp_block">twitter.com (censored) &#x2014; TCP Blocked</option>
+            <option value="tls_int">vpnsite.example &#x2014; TLS Interference</option>
+            <option value="http_451">news-site.example &#x2014; HTTP 451</option>
+            <option value="outage">ALL SITES &#x2014; Likely Outage</option>
+          </select>
+          <button class="run-btn" id="runProbeBtn" onclick="runProbe()">
+            <span id="runBtnIcon" aria-hidden="true">&#x25B6;</span> Run Probe
+          </button>
+        </div>
+      </div>
+      <div class="probe-pipeline" id="probePipeline" role="list">
+        <div class="probe-step" id="step-dns" role="listitem">
+          <div class="step-indicator" id="ind-dns">1</div>
+          <span class="step-label">DNS</span>
+          <span class="step-detail" id="det-dns">Waiting to probe&#x2026;</span>
+          <span class="step-ms" id="ms-dns"></span>
+        </div>
+        <div class="probe-step" id="step-tcp" role="listitem">
+          <div class="step-indicator" id="ind-tcp">2</div>
+          <span class="step-label">TCP</span>
+          <span class="step-detail" id="det-tcp">Waiting to probe&#x2026;</span>
+          <span class="step-ms" id="ms-tcp"></span>
+        </div>
+        <div class="probe-step" id="step-tls" role="listitem">
+          <div class="step-indicator" id="ind-tls">3</div>
+          <span class="step-label">TLS</span>
+          <span class="step-detail" id="det-tls">Waiting to probe&#x2026;</span>
+          <span class="step-ms" id="ms-tls"></span>
+        </div>
+        <div class="probe-step" id="step-http" role="listitem">
+          <div class="step-indicator" id="ind-http">4</div>
+          <span class="step-label">HTTP</span>
+          <span class="step-detail" id="det-http">Waiting to probe&#x2026;</span>
+          <span class="step-ms" id="ms-http"></span>
+        </div>
+      </div>
+      <div class="verdict-box" id="verdictBox" role="status" aria-live="polite">
+        <span id="verdictIcon"></span>
+        <span id="verdictText"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- VERDICTS -->
+<section>
+  <div class="wrap">
+    <div class="section-label">Classification</div>
+    <h2 class="section-title">Verdicts &amp; What They Mean</h2>
+    <p class="section-sub">Every probed site gets one of these verdicts. The combination across all sites determines whether it&#x2019;s selective censorship or a full shutdown.</p>
+    <div class="verdicts-grid">
+      <div class="verdict-card"><span class="verdict-tag v-ok">ok</span><div class="verdict-info"><h4>All Clear</h4><p>All four layers passed. The site is reachable without interference.</p></div></div>
+      <div class="verdict-card"><span class="verdict-tag v-dns">dns_tampering</span><div class="verdict-info"><h4>DNS Manipulation</h4><p>The ISP&#x2019;s resolver returns different (often private) IPs compared to the control resolver at 8.8.8.8.</p></div></div>
+      <div class="verdict-card"><span class="verdict-tag v-dns">dns_failure</span><div class="verdict-info"><h4>DNS Block</h4><p>Control resolver succeeded but OS resolver returned NXDOMAIN &#x2014; domain is being suppressed locally.</p></div></div>
+      <div class="verdict-card"><span class="verdict-tag v-tcp">tcp_blocked</span><div class="verdict-info"><h4>Firewall / DPI Block</h4><p>TCP connection timed out or received a RST. A middlebox is dropping or resetting connections.</p></div></div>
+      <div class="verdict-card"><span class="verdict-tag v-tls">tls_interference</span><div class="verdict-info"><h4>SNI-Based Filtering</h4><p>TCP succeeded but TLS handshake was reset. The SNI field (hostname in TLS ClientHello) triggered blocking.</p></div></div>
+      <div class="verdict-card"><span class="verdict-tag v-http">http_blocked</span><div class="verdict-info"><h4>Legal Block (HTTP 451)</h4><p>HTTP status 451 = &#x201C;Unavailable For Legal Reasons&#x201D;. The clearest signal of government-mandated censorship.</p></div></div>
+      <div class="verdict-card"><span class="verdict-tag v-outage">likely_outage</span><div class="verdict-info"><h4>Internet Shutdown</h4><p>When &#x2265;80% of sites fail at DNS/TCP simultaneously with none succeeding &#x2014; it&#x2019;s a shutdown, not selective blocking.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- MESH SIMULATOR -->
+<section id="mesh">
+  <div class="wrap">
+    <div class="section-label">Delay-Tolerant Networking</div>
+    <h2 class="section-title">Offline Mesh Messaging</h2>
+    <p class="section-sub">When the internet is down, phones can still communicate via Bluetooth / Wi-Fi Direct. Watch nodes move and exchange messages in real time &#x2014; compare direct delivery vs epidemic routing.</p>
+    <div class="mesh-layout">
+      <div class="mesh-canvas-wrap" aria-label="Mesh simulation canvas">
+        <canvas id="meshCanvas"></canvas>
+      </div>
+      <div class="mesh-panel">
+        <div class="mesh-controls">
+          <h3>&#x2699; Parameters</h3>
+          <div class="ctrl-row">
+            <div class="ctrl-label"><span>Nodes</span><span class="ctrl-val" id="v-nodes">30</span></div>
+            <input type="range" id="r-nodes" min="10" max="60" value="30" aria-label="Number of nodes" oninput="document.getElementById('v-nodes').textContent=this.value">
+          </div>
+          <div class="ctrl-row">
+            <div class="ctrl-label"><span>Radio Radius</span><span class="ctrl-val" id="v-radius">15</span></div>
+            <input type="range" id="r-radius" min="5" max="40" value="15" aria-label="Radio radius" oninput="document.getElementById('v-radius').textContent=this.value">
+          </div>
+          <div class="ctrl-row">
+            <div class="ctrl-label"><span>Messages</span><span class="ctrl-val" id="v-msgs">10</span></div>
+            <input type="range" id="r-msgs" min="3" max="25" value="10" aria-label="Number of messages" oninput="document.getElementById('v-msgs').textContent=this.value">
+          </div>
+          <div class="ctrl-row">
+            <div class="ctrl-label"><span>Speed</span><span class="ctrl-val" id="v-speed">1&#xD7;</span></div>
+            <input type="range" id="r-speed" min="1" max="8" value="1" aria-label="Simulation speed" oninput="document.getElementById('v-speed').textContent=this.value+'&#xD7;'">
+          </div>
+          <div class="ctrl-label" style="margin-top:4px"><span>Routing Mode</span></div>
+          <div class="mode-btns" role="group" aria-label="Routing mode">
+            <button class="mode-btn" id="btn-direct" onclick="setMode('direct')">Direct</button>
+            <button class="mode-btn active" id="btn-epidemic" onclick="setMode('epidemic')">Epidemic</button>
+          </div>
+          <button class="sim-btn" id="simBtn" onclick="startSim()" style="margin-top:16px">
+            <span id="simBtnIcon" aria-hidden="true">&#x25B6;</span> Start Simulation
+          </button>
+        </div>
+        <div class="mesh-stats">
+          <h3>&#x1F4CA; Results</h3>
+          <div class="stat-rows">
+            <div>
+              <div class="stat-row"><span class="stat-row-lbl">Delivery Ratio</span><span class="stat-row-val" id="s-delivery">&#x2014;</span></div>
+              <div class="progress-bar-wrap"><div class="progress-bar" id="pb-delivery" style="width:0%"></div></div>
+            </div>
+            <div class="stat-row"><span class="stat-row-lbl">Delivered / Total</span><span class="stat-row-val" id="s-count">&#x2014;</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Avg Latency</span><span class="stat-row-val" id="s-latency">&#x2014;</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Transmissions</span><span class="stat-row-val" id="s-tx">&#x2014;</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Step</span><span class="stat-row-val" id="s-step">&#x2014;</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Mode</span><span class="stat-row-val" id="s-mode">&#x2014;</span></div>
+          </div>
+          <div class="legend" style="margin-top:14px" aria-label="Legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#4a7fa0"></div>Node</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#c9820e"></div>Has message</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#4a7c59"></div>Delivered</div>
+            <div class="legend-item"><div class="legend-dot" style="background:rgba(74,100,140,0.3)"></div>Radio range</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- FEATURES -->
+<section>
+  <div class="wrap">
+    <div class="section-label">Technical Highlights</div>
+    <h2 class="section-title">What Makes This Different</h2>
+    <div class="features-grid">
+      <div class="feature-card"><div class="feature-icon">&#x1F6E0;</div><h3>Zero Dependencies</h3><p>Written entirely using Python&#x2019;s standard library. No pip install. No virtual environments. Runs anywhere Python runs.</p></div>
+      <div class="feature-card"><div class="feature-icon">&#x1F4E1;</div><h3>Hand-Rolled DNS Client</h3><p>Implements UDP DNS queries from scratch per RFC 1035 &#x2014; including name compression pointers &#x2014; to bypass the OS resolver and compare results.</p></div>
+      <div class="feature-card"><div class="feature-icon">&#x1F510;</div><h3>SNI-Aware TLS Probing</h3><p>Sends the real hostname as the TLS SNI field to expose SNI-based filtering &#x2014; a common technique used by internet shutdowns and censorship boxes.</p></div>
+      <div class="feature-card"><div class="feature-icon">&#x1F310;</div><h3>Epidemic Routing</h3><p>Simulates store-carry-forward messaging over short-range radio. Every meeting spreads copies &#x2014; achieving 100% delivery even when no end-to-end path exists.</p></div>
+      <div class="feature-card"><div class="feature-icon">&#x1F3AF;</div><h3>Precise Verdicts</h3><p>Not just &#x201C;it&#x2019;s broken&#x201D; &#x2014; pinpoints the exact layer of failure. DNS tampering looks completely different from TCP blocking or TLS interference.</p></div>
+      <div class="feature-card"><div class="feature-icon">&#x1F6A8;</div><h3>Outage vs. Censorship</h3><p>When &#x2265;80% of targets fail at the network layer, the tool switches from &#x201C;selective blocking&#x201D; to &#x201C;likely_outage&#x201D; &#x2014; a shutdown fingerprint.</p></div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- USAGE -->
+<section id="usage">
+  <div class="wrap">
+    <div class="section-label">Get Started</div>
+    <h2 class="section-title">Running the Tool</h2>
+    <div class="usage-layout">
+      <div class="usage-card">
+        <h3><div class="usage-num">1</div> Blocking Detector</h3>
+        <div class="code-block">
+<span class="comment"># Clone &amp; run &#x2014; no installs needed</span>
+<span class="cmd">git clone</span> <span class="val">https://github.com/ShivamRaghuvanshi2006/shutdown-watch</span>
+<span class="cmd">cd</span> shutdown-watch
+
+<span class="comment"># Probe all sites in data/targets.txt</span>
+<span class="cmd">python</span> -m shutdownwatch <span class="flag">scan</span> \
+  <span class="flag">--targets</span> <span class="val">data/targets.txt</span> \
+  <span class="flag">--out</span> <span class="val">results.json</span>
+
+<span class="comment"># Sample output:</span>
+<span class="comment"># wikipedia.org            ok</span>
+<span class="comment"># pib.gov.in               ok</span>
+<span class="comment"># blocked-site.com         dns_tampering</span>
+<span class="comment"># overall: partial_blocking</span>
+        </div>
+      </div>
+      <div class="usage-card">
+        <h3><div class="usage-num">2</div> Mesh Simulator</h3>
+        <div class="code-block">
+<span class="comment"># Run with default settings (30 nodes)</span>
+<span class="cmd">python</span> -m shutdownwatch <span class="flag">mesh</span>
+
+<span class="comment"># Customize the simulation</span>
+<span class="cmd">python</span> -m shutdownwatch <span class="flag">mesh</span> \
+  <span class="flag">--nodes</span> <span class="val">50</span> \
+  <span class="flag">--radius</span> <span class="val">20.0</span> \
+  <span class="flag">--seed</span> <span class="val">42</span>
+
+<span class="comment"># Sample result:</span>
+<span class="comment"># direct:   50% delivery, 72 step avg, 5 tx</span>
+<span class="comment"># epidemic: 100% delivery, 11 step avg, 290 tx</span>
+        </div>
+      </div>
+    </div>
+    <div class="usage-card" style="margin-top:var(--gap)">
+      <h3><div class="usage-num">3</div> Run the Test Suite</h3>
+      <div class="code-block">
+<span class="cmd">python</span> -m unittest discover <span class="flag">-s</span> tests <span class="flag">-v</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CLOSING -->
+<div class="closing">
+  <p class="closing-text">The internet belongs to everyone. Know when it&#x2019;s being taken away.</p>
+  <p class="closing-sub">Built with care for CS students, digital rights researchers, and anyone who wants answers.</p>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-left">
+      <h4>shutdown-watch</h4>
+      <p>A Computer Networks course project. MIT License.</p>
+      <p style="margin-top:4px">Only probes public, lawful websites. Built for education.</p>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/ShivamRaghuvanshi2006/shutdown-watch" target="_blank" rel="noopener" class="footer-link">GitHub</a>
+      <a href="REPORT.md" class="footer-link">Report</a>
+      <a href="https://github.com/ShivamRaghuvanshi2006/shutdown-watch/blob/main/LICENSE" target="_blank" rel="noopener" class="footer-link">License</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* PROBE SIMULATOR */
+const probeScenarios = {
+  ok: {
+    dns:  { ok: true,  det: 'OS: 185.15.58.224  |  8.8.8.8: 185.15.58.224 \u2713 Match',  ms: '28ms' },
+    tcp:  { ok: true,  det: 'Port 443 \u2192 SYN/ACK received',                              ms: '112ms' },
+    tls:  { ok: true,  det: 'TLS 1.3 handshake complete, SNI: wikipedia.org',           ms: '95ms' },
+    http: { ok: true,  det: 'HTTP 200 OK',                                               ms: '44ms' },
+    verdict: { cls: 'ok', icon: '\u2705', text: 'ok \u2014 Site is fully reachable' }
+  },
+  dns_tamper: {
+    dns:  { ok: false, det: 'OS: 192.168.1.1 (private!) |  8.8.8.8: 104.18.9.2  \u26a0 MISMATCH', ms: '32ms' },
+    tcp:  { skip: true,  det: 'Skipped (DNS tampered, continuing with control IP\u2026)', ms: '' },
+    tls:  { skip: true,  det: 'Skipped', ms: '' },
+    http: { skip: true,  det: 'Skipped', ms: '' },
+    verdict: { cls: 'fail', icon: '\ud83d\udd34', text: 'dns_tampering \u2014 ISP resolver is returning a bogus private IP' }
+  },
+  tcp_block: {
+    dns:  { ok: true,  det: 'OS: 104.244.42.65  |  8.8.8.8: 104.244.42.65 \u2713 Match',   ms: '31ms' },
+    tcp:  { ok: false, det: 'Port 443 \u2192 RST received after 4.9s (DPI reset)',           ms: '4901ms' },
+    tls:  { skip: true,  det: 'Skipped (TCP blocked)', ms: '' },
+    http: { skip: true,  det: 'Skipped', ms: '' },
+    verdict: { cls: 'fail', icon: '\ud83d\udd34', text: 'tcp_blocked \u2014 Connection reset by a middlebox/DPI device' }
+  },
+  tls_int: {
+    dns:  { ok: true,  det: 'OS: 198.51.100.4  |  8.8.8.8: 198.51.100.4 \u2713 Match',    ms: '29ms' },
+    tcp:  { ok: true,  det: 'Port 443 \u2192 Connected',                                     ms: '98ms' },
+    tls:  { ok: false, det: 'TLS ClientHello sent (SNI: vpnsite.example) \u2192 RST received mid-handshake', ms: '241ms' },
+    http: { skip: true,  det: 'Skipped (TLS dropped)', ms: '' },
+    verdict: { cls: 'warn', icon: '\ud83d\udfe1', text: 'tls_interference \u2014 SNI field in TLS ClientHello triggered a reset' }
+  },
+  http_451: {
+    dns:  { ok: true,  det: 'OS: 203.0.113.5  |  8.8.8.8: 203.0.113.5 \u2713 Match',      ms: '35ms' },
+    tcp:  { ok: true,  det: 'Port 443 \u2192 Connected',                                     ms: '88ms' },
+    tls:  { ok: true,  det: 'TLS 1.3 handshake complete',                               ms: '102ms' },
+    http: { ok: false, det: 'HTTP 451 Unavailable For Legal Reasons',                   ms: '51ms' },
+    verdict: { cls: 'fail', icon: '\ud83d\udd34', text: 'http_blocked \u2014 HTTP 451: Government-mandated censorship' }
+  },
+  outage: {
+    dns:  { ok: false, det: 'NXDOMAIN from both OS and 8.8.8.8 (5 sites failed)',      ms: '' },
+    tcp:  { ok: false, det: 'TimeoutError on all reachable IPs',                         ms: '' },
+    tls:  { skip: true,  det: 'Skipped', ms: '' },
+    http: { skip: true,  det: 'Skipped', ms: '' },
+    verdict: { cls: 'fail', icon: '\ud83d\udea8', text: 'likely_outage \u2014 \u226580% of sites unreachable: this is a shutdown' }
+  }
+};
+
+let probeRunning = false;
+
+async function runProbe() {
+  if (probeRunning) return;
+  probeRunning = true;
+  const btn = document.getElementById('runProbeBtn');
+  btn.disabled = true;
+  document.getElementById('runBtnIcon').textContent = '\u23f3';
+
+  const scen = probeScenarios[document.getElementById('targetSelect').value];
+  const steps = ['dns','tcp','tls','http'];
+
+  document.getElementById('verdictBox').classList.remove('show','ok','warn','fail');
+  for (const s of steps) {
+    const el = document.getElementById('step-'+s);
+    el.className = 'probe-step';
+    document.getElementById('det-'+s).textContent = 'Waiting\u2026';
+    document.getElementById('ms-'+s).textContent = '';
+    document.getElementById('ind-'+s).textContent = steps.indexOf(s)+1;
+  }
+
+  await sleep(300);
+
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const data = scen[s];
+    const el = document.getElementById('step-'+s);
+    const ind = document.getElementById('ind-'+s);
+
+    if (data.skip) {
+      el.className = 'probe-step';
+      document.getElementById('det-'+s).textContent = data.det;
+      continue;
+    }
+
+    el.className = 'probe-step active';
+    ind.textContent = '\u27f3';
+    document.getElementById('det-'+s).textContent = 'Probing\u2026';
+    await sleep(600 + Math.random() * 400);
+
+    if (data.ok) {
+      el.className = 'probe-step done-ok';
+      ind.textContent = '\u2713';
+    } else {
+      el.className = 'probe-step done-fail';
+      ind.textContent = '\u2717';
+    }
+    document.getElementById('det-'+s).textContent = data.det;
+    document.getElementById('ms-'+s).textContent = data.ms;
+
+    if (!data.ok && !data.skip) { await sleep(200); break; }
+  }
+
+  await sleep(300);
+  const vb = document.getElementById('verdictBox');
+  vb.className = 'verdict-box show ' + scen.verdict.cls;
+  document.getElementById('verdictIcon').textContent = scen.verdict.icon;
+  document.getElementById('verdictText').textContent = scen.verdict.text;
+
+  probeRunning = false;
+  btn.disabled = false;
+  document.getElementById('runBtnIcon').textContent = '\u25b6';
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* MESH SIMULATOR */
+let simMode = 'epidemic';
+let simRunning = false;
+let simFrame = null;
+let simState = null;
+
+function setMode(m) {
+  simMode = m;
+  document.getElementById('btn-direct').classList.toggle('active', m === 'direct');
+  document.getElementById('btn-epidemic').classList.toggle('active', m === 'epidemic');
+}
+
+function initSim() {
+  const n   = +document.getElementById('r-nodes').value;
+  const rad = +document.getElementById('r-radius').value;
+  const nm  = +document.getElementById('r-msgs').value;
+  const rng = seededRng(42);
+  const area = 100;
+
+  const nodes = [];
+  for (let i = 0; i < n; i++) {
+    nodes.push({ id: i, x: rng() * area, y: rng() * area, buf: new Set() });
+  }
+
+  const msgs = {};
+  for (let m = 0; m < nm; m++) {
+    let src = Math.floor(rng() * n), dst;
+    do { dst = Math.floor(rng() * n); } while (dst === src);
+    msgs[m] = { src, dst };
+    nodes[src].buf.add(m);
+  }
+
+  return { nodes, msgs, area, radius: rad, step: 0, delivered: {}, copiesSent: 0, mode: simMode };
+}
+
+function stepSim(state) {
+  const { nodes, msgs, area, radius, mode } = state;
+  const stepSize = 5;
+  const rng = seededRng(state.step * 9999 + 7);
+
+  for (const nd of nodes) {
+    nd.x = Math.min(area, Math.max(0, nd.x + (rng() * 2 - 1) * stepSize));
+    nd.y = Math.min(area, Math.max(0, nd.y + (rng() * 2 - 1) * stepSize));
+  }
+
+  const n = nodes.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = nodes[i], b = nodes[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      if (dx*dx + dy*dy > radius*radius) continue;
+
+      for (const [src_n, dst_n] of [[a,b],[b,a]]) {
+        for (const m of src_n.buf) {
+          if (dst_n.buf.has(m)) continue;
+          const { dst } = msgs[m];
+          if (mode === 'direct' && dst_n.id !== dst) continue;
+          dst_n.buf.add(m);
+          state.copiesSent++;
+          if (dst_n.id === dst && !state.delivered[m]) {
+            state.delivered[m] = state.step;
+          }
+        }
+      }
+    }
+  }
+
+  state.step++;
+  return state;
+}
+
+function seededRng(seed) {
+  let s = seed | 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) | 0;
+    return (s >>> 0) / 4294967296;
+  };
+}
+
+const canvas = document.getElementById('meshCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const wrap = canvas.parentElement;
+  const size = wrap.getBoundingClientRect();
+  canvas.width  = size.width  * window.devicePixelRatio;
+  canvas.height = size.height * window.devicePixelRatio;
+  canvas.style.width  = size.width + 'px';
+  canvas.style.height = size.height + 'px';
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+
+function drawSim(state) {
+  const { nodes, msgs, area, radius } = state;
+  const wrap = canvas.parentElement;
+  const W = wrap.getBoundingClientRect().width;
+  const H = wrap.getBoundingClientRect().height;
+  const scale = Math.min(W, H) / area;
+
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.fillStyle = '#f0ece0';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = 'rgba(180,168,150,0.3)';
+  ctx.lineWidth = 0.5;
+  for (let y = 32; y < H; y += 32) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i+1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      if (dx*dx + dy*dy <= radius*radius) {
+        ctx.beginPath();
+        ctx.moveTo(a.x*scale + (W - area*scale)/2, a.y*scale + (H - area*scale)/2);
+        ctx.lineTo(b.x*scale + (W - area*scale)/2, b.y*scale + (H - area*scale)/2);
+        ctx.strokeStyle = 'rgba(74,100,140,0.18)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  }
+
+  const offX = (W - area*scale)/2;
+  const offY = (H - area*scale)/2;
+
+  for (const nd of nodes) {
+    const cx = nd.x * scale + offX;
+    const cy = nd.y * scale + offY;
+
+    let isDelivered = false, hasMsg = false;
+    for (const [mId, { dst }] of Object.entries(msgs)) {
+      if (nd.id === dst && nd.buf.has(+mId)) { isDelivered = true; break; }
+    }
+    if (!isDelivered && nd.buf.size > 0) hasMsg = true;
+
+    let color = '#4a7fa0';
+    if (isDelivered) color = '#4a7c59';
+    else if (hasMsg)  color = '#c9820e';
+
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 9);
+    grad.addColorStop(0, color + 'bb');
+    grad.addColorStop(1, color + '00');
+    ctx.beginPath();
+    ctx.arc(cx, cy, 9, 0, Math.PI*2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#38352f';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
+}
+
+function updateStats(state) {
+  const nd = Object.keys(state.delivered).length;
+  const nm = Object.keys(state.msgs).length;
+  const ratio = nd / nm;
+  document.getElementById('s-delivery').textContent = (ratio * 100).toFixed(0) + '%';
+  document.getElementById('s-count').textContent = nd + ' / ' + nm;
+  document.getElementById('pb-delivery').style.width = (ratio * 100) + '%';
+  const lats = Object.values(state.delivered);
+  document.getElementById('s-latency').textContent = lats.length ? (lats.reduce((a,b)=>a+b,0)/lats.length).toFixed(1) + ' steps' : '\u2014';
+  document.getElementById('s-tx').textContent = state.copiesSent;
+  document.getElementById('s-step').textContent = state.step;
+  document.getElementById('s-mode').textContent = state.mode;
+}
+
+let lastFrameTime = 0;
+function animFrame(ts) {
+  if (!simRunning) return;
+  const speed = +document.getElementById('r-speed').value;
+  const interval = 120 / speed;
+
+  if (ts - lastFrameTime >= interval) {
+    for (let i = 0; i < speed; i++) { stepSim(simState); }
+    drawSim(simState);
+    updateStats(simState);
+    lastFrameTime = ts;
+    if (simState.step >= 300) { stopSim(); return; }
+  }
+
+  simFrame = requestAnimationFrame(animFrame);
+}
+
+function startSim() {
+  if (simRunning) { stopSim(); return; }
+  resizeCanvas();
+  simState = initSim();
+  simRunning = true;
+  document.getElementById('simBtn').innerHTML = '<span aria-hidden="true">\u23f9</span> Stop Simulation';
+  drawSim(simState);
+  lastFrameTime = 0;
+  simFrame = requestAnimationFrame(animFrame);
+}
+
+function stopSim() {
+  simRunning = false;
+  if (simFrame) { cancelAnimationFrame(simFrame); simFrame = null; }
+  document.getElementById('simBtn').innerHTML = '<span aria-hidden="true">\u25b6</span> Start Simulation';
+}
+
+window.addEventListener('load', () => {
+  resizeCanvas();
+  const demoState = initSim();
+  drawSim(demoState);
+  updateStats(demoState);
+});
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  if (simState) drawSim(simState);
+});
+</script>
+</body>
+</html>
