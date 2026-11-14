@@ -14,7 +14,7 @@ def build_query(host, qid=None):
         qid = random.randint(0, 0xFFFF)
     # flags 0x0100 = standard query, recursion desired; 1 question
     header = struct.pack("!HHHHHH", qid, 0x0100, 1, 0, 0, 0)
-    qname = b"".join(bytes([len(p)]) + p.encode("ascii") for p in host.strip(".").split(".")) + b"\\x00"
+    qname = b"".join(bytes([len(p)]) + p.encode("ascii") for p in host.strip(".").split(".")) + b"\x00"
     return qid, header + qname + struct.pack("!HH", 1, 1)  # QTYPE=A, QCLASS=IN
 
 
@@ -83,7 +83,7 @@ def parse_response(data, qid):
 
 
 def query(host, server="8.8.8.8", timeout=3.0):
-    """Ask `server` directly for the A records of `host`."""
+    """Ask the specified resolver directly for A records of the host."""
     qid, packet = build_query(host)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.settimeout(timeout)
