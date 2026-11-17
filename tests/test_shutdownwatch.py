@@ -26,6 +26,39 @@ class DnsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             dns_client.parse_response(fake_dns_reply(7, bytes(4)), 8)
 
+    def test_truncated_compression_pointer_rejected(self):
+        packet = struct.pack("!HHHHHH", 7, 0x8180, 1, 0, 0, 0) + b"\xc0"
+        with self.assertRaisesRegex(ValueError, "compression pointer"):
+            dns_client.parse_response(packet, 7)
+
+    def test_out_of_bounds_compression_pointer_rejected(self):
+        packet = struct.pack("!HHHHHH", 7, 0x8180, 1, 0, 0, 0) + b"\xff\xff"
+        with self.assertRaisesRegex(ValueError, "out of bounds"):
+            dns_client.parse_response(packet, 7)
+
+    def test_truncated_question_label_rejected(self):
+        packet = struct.pack("!HHHHHH", 7, 0x8180, 1, 0, 0, 0) + b"\x05ab"
+        with self.assertRaisesRegex(ValueError, "truncated DNS label"):
+            dns_client.parse_response(packet, 7)
+
+    def test_truncated_resource_record_header_rejected(self):
+        question = b"\x07example\x03com\x00" + struct.pack("!HH", 1, 1)
+        packet = struct.pack("!HHHHHH", 7, 0x8180, 1, 1, 0, 0) + question + b"\xc0\x0c\x00\x01"
+        with self.assertRaisesRegex(ValueError, "resource record"):
+            dns_client.parse_response(packet, 7)
+
+    def test_truncated_resource_record_data_rejected(self):
+        question = b"\x07example\x03com\x00" + struct.pack("!HH", 1, 1)
+        record = b"\xc0\x0c" + struct.pack("!HHIH", 1, 1, 60, 4) + b"\x5d\xb8"
+        packet = struct.pack("!HHHHHH", 7, 0x8180, 1, 1, 0, 0) + question + record
+        with self.assertRaisesRegex(ValueError, "resource-record data"):
+            dns_client.parse_response(packet, 7)
+
+    def test_query_packet_is_not_accepted_as_response(self):
+        packet = struct.pack("!HHHHHH", 7, 0x0100, 0, 0, 0, 0)
+        with self.assertRaisesRegex(ValueError, "not a response"):
+            dns_client.parse_response(packet, 7)
+
 
 class ClassifyTests(unittest.TestCase):
     def mk(self, **kw):
